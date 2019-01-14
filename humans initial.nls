@@ -1,0 +1,85 @@
+globals
+[
+  
+  ;; insert other global veriables here to help your code (other globals were set by the GUI and in the main code tab)
+  
+]
+
+humans-own
+[
+  h.speed                ;; do not change this attribute name. You can change its value if desired
+  h.isInChase            ;; do not change this attribute name. You can change its value as desired
+  h.countOfZombiesNear   ;; do not change this attribute name.
+
+  ;; You can add other human-specific attributes here
+  
+]
+
+patches-own
+[
+  
+  ;; You can add other patch attributes here
+  ;; (for example) insideRoom?
+
+]
+
+;; Initialize any other human attributes create here, for when they are first created
+;; (for example) set hairColor brown
+to h.initialize
+  
+end
+
+;; Initialize any other patch attributes here, for during world setup
+to p.initialize
+  
+  ;; (for example) ifelse random 2 = 0 [set inside? true][set inside? false]
+  
+end  
+
+;; Scan for zombies and set heading and speed accordingly
+;; (for example) code can be also be exapanded or used as a template for finding safe zones/rooms and staying there
+to h.scanForZombies
+  
+  ;; Set default speed and color unless zombie found
+    
+  set h.speed 1
+  set h.isInChase false
+  set color orange
+
+  ;; sets counter for each human, to the number of zombies in their own personal awareness range
+  set h.countOfZombiesNear count zombies in-radius zombieAwarenessRadius 
+    
+  if h.countOfZombiesNear >= 1
+  [
+    ;; There are zombies nearby!!!
+    ;; Find closest zombie without a wall between the human and the zombie
+    let closestZombie min-one-of zombies [measure-distance self myself]       
+    if measure-distance self closestZombie < zombieAwarenessRadius
+    [      
+      ;; Turn towards the zombie and face in the opposite direction
+      face closestZombie
+      set heading heading + 180      
+      
+      ;; Run away at speed!
+      set h.speed 1.8
+      set h.isInChase true
+      
+      ;; Set color to red as a visual debug
+      set color red
+    ]
+  ]
+
+end
+
+;; This routine is called in the main code tab, whenever a zombie encountered a human
+;; Reference the NetLogo Programming Guide for more details on passing agruments into a procedure, as demonstrated below
+;; (For example) You can use this information to determine where the zombies are located
+to h.zombieEncountered [human]  
+  show (list "human:" [who] of human " encountered zombie: " who )
+end
+
+;; This rountine is called in the main code tab, whenever a zombie is killed by a human
+to h.killedZombie [human]
+  show (list "human:" [who] of human " killed zombie: " who )
+end
+

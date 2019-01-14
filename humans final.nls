@@ -1,0 +1,247 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+globals
+[
+  ;; insert other global veriables here to help your code (other globals were set by the GUI and in the main code tab)
+  
+  xlist
+  ylist
+  _x
+  _y
+  separation.min
+  visual.range
+  separation.degree
+  align.degree
+  cohere.degree
+  x
+  d
+]
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+humans-own
+[
+  h.speed                ;; do not change this attribute name. You can change its value if desired
+  h.isInChase            ;; do not change this attribute name. You can change its value as desired
+  h.countOfZombiesNear   ;; do not change this attribute name.
+
+  ;; You can add other human-specific attributes here
+  
+  groupmates         ; agentset of nearby humans
+  nearest-neighbor   ; closest one of our groupmates
+]
+
+patches-own
+[
+  ;; You can add other patch attributes here
+  ;; (for example) insideRoom?
+
+]
+
+;; Initialize any other human attributes create here, for when they are first created
+;; (for example) set hairColor brown
+
+to h.initialize
+  
+end
+
+;; Initialize any other patch attributes here, for during world setup
+
+to p.initialize
+  ;; (for example) ifelse random 2 = 0 [set inside? true][set inside? false]
+  
+end  
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to group
+  find-groupmates
+  if any? groupmates
+    [ find-nearest-neighbor
+      ifelse distance nearest-neighbor < separation.min
+      [ 
+        separate 
+      ]
+      [ 
+        align
+        cohere
+      ] 
+    ]
+end
+
+to find-groupmates
+  set groupmates other humans in-radius visual.range
+end
+
+to find-nearest-neighbor
+  set nearest-neighbor min-one-of groupmates [measure-distance self myself]
+end
+
+; SEPARATE
+
+to separate
+  turn-away ([heading] of nearest-neighbor) separation.degree
+end
+
+; ALIGN
+
+to align
+  turn-towards average-groupmate-heading align.degree
+end
+
+to-report average-groupmate-heading  ;; turtle procedure
+  ;; We can't just average the heading variables here.
+  ;; For example, the average of 1 and 359 should be 0,
+  ;; not 180.  So we have to use trigonometry.
+  ;; Theoretically this could fail if both sums are 0
+  ;; since atan 0 0 is undefined, but in practice that's
+  ;; vanishingly unlikely.
+  report atan ((sum [dx] of groupmates) + 0.000001)
+              ((sum [dy] of groupmates) + 0.000001)
+end
+
+; COHERE
+
+to cohere
+  turn-towards average-heading-towards-groupmates cohere.degree
+end
+
+to-report average-heading-towards-groupmates  ;; turtle procedure
+  ;; "towards myself" gives us the heading from the other turtle
+  ;; to me, but we want the heading from me to the other turtle,
+  ;; so we add 180
+  report atan ((mean [sin (towards myself + 180)] of groupmates) + 0.000001)
+              ((mean [cos (towards myself + 180)] of groupmates) + 0.000001)
+end
+
+to turn-towards [new-heading max-turn]  ; turtle procedure
+  turn-at-most (subtract-headings new-heading heading) max-turn
+end
+
+to turn-away [new-heading max-turn]  ; turtle procedure
+  turn-at-most (subtract-headings heading new-heading) max-turn
+end
+
+;; turn right by "turn" degrees (or left if "turn" is negative),
+;; but never turn more than "max-turn" degrees
+to turn-at-most [turn max-turn]  ;; turtle procedure
+  ifelse abs turn > max-turn
+    [ ifelse turn > 0
+        [ rt max-turn ]
+        [ lt max-turn ] ]
+    [ rt turn ]
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Scan for zombies and set heading and speed accordingly
+;; (for example) code can be also be exapanded or used as a template for finding safe zones/rooms and staying there
+
+to h.scanForZombies
+  set h.speed 1.6
+  set h.isInChase false
+  set color orange
+  set separation.min 1
+  set visual.range 20
+  set separation.degree 1.5
+  set align.degree 10
+  set cohere.degree 10
+  set x 0
+  set d 1
+
+  ;; asks humans to stop moving if the patch ahead of them and behind them is cyan
+
+  ifelse ([pcolor] of patch-at-heading-and-distance (heading) (patch-size) = cyan) and ([pcolor] of patch-at-heading-and-distance (heading + 180) (patch-size) = cyan)
+  [
+    set h.isInChase false
+    set color orange
+    set h.speed 0
+  ]
+  [  
+    
+    ;; have humans move towords the nearest human and stay close to eachother
+    ask humans [group]
+    
+    ;; look for a safe room
+    
+    while [([pcolor] of patch-ahead d != cyan) and (x < 360)]
+    [ 
+      set d 1
+      while [([pcolor] of patch-ahead d != cyan) and ([pcolor] of patch-ahead d != black) and (d < 90)]
+      [ 
+        set d d + 1
+      ]
+      if ([pcolor] of patch-ahead d != cyan) or ([pcolor] of patch-ahead d = black)
+      [
+        set x x + .25
+        set heading heading + .25
+      ]
+    ]
+    
+    ;; if a safe room isn't found, check for zombies.. if a safe room is found and zombies are nearby, sprint to safe room, otherwise go to safe room
+    
+    ifelse x = 360
+    [    
+      ;; sets counter for each human, to the number of zombies in their own personal awareness range
+    
+      set h.countOfZombiesNear count zombies in-radius zombieAwarenessRadius 
+      if h.countOfZombiesNear >= 1
+      [
+        ;; There are zombies nearby!!!
+        ;; face the opposite direction of the centriod of the group of zombies
+        set xlist [xcor] of zombies in-radius zombieAwarenessRadius
+        set ylist [ycor] of zombies in-radius zombieAwarenessRadius
+        set _x mean xlist
+        set _y mean ylist
+        facexy _x _y
+        set heading heading + 180    
+      
+        ;; Run away at speed!
+        set h.speed 1.8
+        set h.isInChase true
+      
+        ;; Set color to red as a visual debug
+        set color red
+      ]
+    ]
+    [
+      set h.countOfZombiesNear count zombies in-radius zombieAwarenessRadius 
+      ifelse h.countOfZombiesNear >= 1
+      [
+        let closestZombie min-one-of zombies [measure-distance self myself]       
+        ifelse measure-distance self closestZombie < 8
+        [ 
+          face closestZombie
+          set heading heading + 180
+        ]
+        [
+          set h.speed 1.8
+          set h.isInChase true
+          set color red
+          set heading heading + x
+        ]
+      ]
+      [
+        set h.isInChase false
+        set color orange
+        set heading heading + x
+      ]
+    ]
+  ]
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; This routine is called in the main code tab, whenever a zombie encountered a human
+;; Reference the NetLogo Programming Guide for more details on passing agruments into a procedure, as demonstrated below
+;; (For example) You can use this information to determine where the zombies are located
+to h.zombieEncountered [human]  
+  show (list "human:" [who] of human " encountered zombie: " who )
+end
+
+;; This rountine is called in the main code tab, whenever a zombie is killed by a human
+to h.killedZombie [human]
+  show (list "human:" [who] of human " killed zombie: " who )
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
